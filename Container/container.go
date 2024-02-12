@@ -13,6 +13,11 @@ type container struct {
 	mainServerPort   string
 }
 
+type MainContainer struct {
+	container
+	yellowPage YellowPage.YellowPage
+}
+
 func NewContainer(ID, mainAdress, mainPort, port string) *container {
 	return &container{
 		id:               ID,
@@ -21,6 +26,27 @@ func NewContainer(ID, mainAdress, mainPort, port string) *container {
 		mainServerAdress: mainAdress,
 		mainServerPort:   mainPort,
 	}
+}
+
+func NewMainContainer(ID, port string) *MainContainer {
+	return &MainContainer{
+		container: container{
+			id:               ID,
+			port:             port,
+			agents:           make(map[string]Agent.Agent),
+			mainServerAdress: "",
+			mainServerPort:   "",
+		},
+		yellowPage: *YellowPage.NewYellowPage(),
+	}
+}
+func (MainContainer *MainContainer) RegisterContainer(address, port string) {
+	MainContainer.yellowPage.RegisterContainer(address, port)
+}
+
+func (MainContainer *MainContainer) RegisterAgent(containerId string) int {
+	return MainContainer.yellowPage.RegisterAgent(containerId)
+
 }
 
 func (container *container) AddAgent(agent Agent.Agent) {
