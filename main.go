@@ -1,0 +1,5 @@
+package FrameworkMultiAgents
+
+func main() {
+
+}
