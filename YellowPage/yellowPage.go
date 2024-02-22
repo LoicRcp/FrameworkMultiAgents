@@ -8,9 +8,13 @@ import (
 type YellowPage struct {
 	AgentRegistry     map[string]string
 	ContainerRegistry map[string]string
-	mutex             sync.Mutex
-	maxID             int
-	availableIDQueue  []int
+
+	// eviter un maximum les mutex, donc utiliser un/des channels dans le networkService avec un select pour éviter la concurrence
+	mutex sync.Mutex
+
+	// enlever la queue et utiliser un int64 directement
+	maxID            uint64
+	availableIDQueue []int
 }
 
 func NewYellowPage() *YellowPage {
@@ -39,9 +43,7 @@ func (yellowPage *YellowPage) getAvailableID() int {
 // adress = ip:port
 func (yellowPage *YellowPage) RegisterContainer(containerID string, adress string) {
 	yellowPage.ContainerRegistry[containerID] = adress
-
 }
-
 func (yellowPage *YellowPage) RegisterAgent(containerID string) int {
 	id := yellowPage.getAvailableID()
 	yellowPage.AgentRegistry[strconv.Itoa(id)] = containerID

@@ -4,6 +4,8 @@ type Agent struct {
 	ID               int `json:"id"`
 	CurrentBehaviour Behaviour
 	AgentBehaviours  map[string]Behaviour
+
+	// Comment on met les attributs de l'agent ? Transformer ça en interface ?
 }
 
 func (agent *Agent) Perceive() {
@@ -23,3 +25,5 @@ type Behaviour interface {
 	Decide(params ...interface{})
 	Act(params ...interface{})
 }
+
+// rajouter le start
