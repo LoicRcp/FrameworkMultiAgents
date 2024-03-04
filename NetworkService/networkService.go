@@ -17,6 +17,8 @@ type NetworkService struct {
 	requestCounter       int64 // For generating unique correlation IDs
 	handlerMutex         sync.Mutex
 	responseHandlers     map[int64]chan Messages.Message // Map to track response handlers
+	connPool             map[string]*websocket.Conn
+	connPoolMutex        sync.Mutex
 }
 
 func NewNetworkService(mainContainerAddress, localAddress string) *NetworkService {
@@ -24,11 +26,11 @@ func NewNetworkService(mainContainerAddress, localAddress string) *NetworkServic
 		MainContainerAddress: mainContainerAddress,
 		LocalAddress:         localAddress,
 		responseHandlers:     make(map[int64]chan Messages.Message),
+		connPool:             make(map[string]*websocket.Conn),
 	}
 	return ns
 }
 
-// SendMessage dynamically connects to the specified WebSocket server and sends a message.
 func (ns *NetworkService) SendMessage(message Messages.Message, address string) (Messages.Message, error) {
 	correlationID := atomic.AddInt64(&ns.requestCounter, 1)
 	message.CorrelationID = correlationID
@@ -37,11 +39,10 @@ func (ns *NetworkService) SendMessage(message Messages.Message, address string) 
 	ns.addHandler(correlationID, responseChan)
 	defer ns.removeHandler(correlationID)
 
-	conn, _, err := websocket.DefaultDialer.Dial(fmt.Sprintf("ws://%s", address), nil)
+	conn, err := ns.getConnection(address)
 	if err != nil {
-		return Messages.Message{}, fmt.Errorf("WebSocket Dial Error: %w", err)
+		return Messages.Message{}, fmt.Errorf("error getting connection: %w", err)
 	}
-	defer conn.Close()
 
 	messageBytes, err := json.Marshal(message)
 	if err != nil {
@@ -58,6 +59,24 @@ func (ns *NetworkService) SendMessage(message Messages.Message, address string) 
 	case <-time.After(30 * time.Second):
 		return Messages.Message{}, fmt.Errorf("timeout waiting for response to message with CorrelationID %d", correlationID)
 	}
+}
+
+func (ns *NetworkService) getConnection(address string) (*websocket.Conn, error) {
+	ns.connPoolMutex.Lock()
+	defer ns.connPoolMutex.Unlock()
+
+	// Use existing connection if available
+	if conn, exists := ns.connPool[address]; exists && conn != nil {
+		return conn, nil
+	}
+
+	// Create a new connection and add it to the pool
+	conn, _, err := websocket.DefaultDialer.Dial(fmt.Sprintf("ws://%s", address), nil)
+	if err != nil {
+		return nil, fmt.Errorf("WebSocket Dial Error: %w", err)
+	}
+	ns.connPool[address] = conn
+	return conn, nil
 }
 
 func (ns *NetworkService) addHandler(correlationID int64, ch chan Messages.Message) {
