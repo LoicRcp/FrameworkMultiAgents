@@ -12,14 +12,18 @@ const (
 
 const (
 	RegisterContainerContent ContentType = iota
+	RegisterContainerAnswerContent
+	RegisterAgentContent
+	InterAgentMessageContent
 )
 
 type Message struct {
-	Type          MessageType
-	Sender        string
-	ContentType   ContentType
-	Content       string // Serialized content
-	CorrelationID int64  // Unique ID for matching requests and responses
+	Type           MessageType
+	Sender         string
+	ContentType    ContentType
+	Content        string // Serialized content
+	CorrelationID  int64  // Unique ID for matching requests and responses
+	ExpectResponse bool   `json:"expectResponse"`
 }
 
 type RegisterContainerPayload struct {
@@ -31,10 +35,23 @@ type RegisterContainerAnswerPayload struct {
 	Error string
 }
 
+type RegisterAgentPayload struct {
+	ContainerID string
+}
+
+type InterAgentMessagePayload struct {
+	ReceiverID int
+	Content    string
+}
+
 func (registerContainerPayload RegisterContainerPayload) String() string {
 	return registerContainerPayload.Address
 }
 
 func (registerContainerAnswerPayload RegisterContainerAnswerPayload) String() string {
-	return registerContainerAnswerPayload.ID + " " + registerContainerAnswerPayload.Error
+	return registerContainerAnswerPayload.Error
+}
+
+func (registerAgentPayload RegisterAgentPayload) String() string {
+	return registerAgentPayload.ContainerID
 }

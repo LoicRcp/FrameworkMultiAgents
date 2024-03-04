@@ -2,6 +2,7 @@ package NetworkService
 
 import (
 	"FrameworkMultiAgents/Messages"
+	"FrameworkMultiAgents/containerOps"
 	"encoding/json"
 	"fmt"
 	"sync"
@@ -19,6 +20,7 @@ type NetworkService struct {
 	responseHandlers     map[int64]chan Messages.Message // Map to track response handlers
 	connPool             map[string]*websocket.Conn
 	connPoolMutex        sync.Mutex
+	containerOps         containerOps.ContainerOps
 }
 
 func NewNetworkService(mainContainerAddress, localAddress string) *NetworkService {
@@ -31,13 +33,20 @@ func NewNetworkService(mainContainerAddress, localAddress string) *NetworkServic
 	return ns
 }
 
+func (ns *NetworkService) SetContainerOps(ops containerOps.ContainerOps) {
+	ns.containerOps = ops
+}
+
 func (ns *NetworkService) SendMessage(message Messages.Message, address string) (Messages.Message, error) {
 	correlationID := atomic.AddInt64(&ns.requestCounter, 1)
 	message.CorrelationID = correlationID
 
-	responseChan := make(chan Messages.Message)
-	ns.addHandler(correlationID, responseChan)
-	defer ns.removeHandler(correlationID)
+	var responseChan chan Messages.Message
+	if message.ExpectResponse {
+		responseChan = make(chan Messages.Message)
+		ns.addHandler(correlationID, responseChan)
+		defer ns.removeHandler(correlationID)
+	}
 
 	conn, err := ns.getConnection(address)
 	if err != nil {
@@ -53,13 +62,17 @@ func (ns *NetworkService) SendMessage(message Messages.Message, address string) 
 		return Messages.Message{}, fmt.Errorf("WriteMessage error: %w", err)
 	}
 
-	select {
-	case response := <-responseChan:
-		return response, nil
-	//TODO: remplacer 30 par une constante
-	case <-time.After(30 * time.Second):
-		return Messages.Message{}, fmt.Errorf("timeout waiting for response to message with CorrelationID %d", correlationID)
+	if message.ExpectResponse {
+		select {
+		case response := <-responseChan:
+			return response, nil
+		case <-time.After(30 * time.Second): // Consider making this timeout configurable
+			return Messages.Message{}, fmt.Errorf("timeout waiting for response to message with CorrelationID %d", correlationID)
+		}
 	}
+
+	// If no response is expected, return immediately
+	return Messages.Message{}, nil
 }
 
 func (ns *NetworkService) getConnection(address string) (*websocket.Conn, error) {
@@ -115,7 +128,27 @@ func (ns *NetworkService) processIncomingMessage(message Messages.Message) {
 	if ch, exists := ns.responseHandlers[message.CorrelationID]; exists {
 		ch <- message
 	} else {
-		fmt.Printf("No handler found for message with CorrelationID %d", message.CorrelationID)
+		if message.Type == Messages.RegisterContainer {
+			var payload Messages.RegisterContainerPayload
+			if err := json.Unmarshal([]byte(message.Content), &payload); err != nil {
+				fmt.Printf("Error unmarshaling RegisterContainerPayload: %v", err)
+				return
+			}
+			ns.containerOps.RegisterContainer(message.Sender, payload.Address)
+			// send response without expecting a reply
+			payload2 := Messages.RegisterContainerAnswerPayload{
+				Error: "",
+			}
+			payloadStr, _ := json.Marshal(payload2)
+			response := Messages.Message{
+				Type:           Messages.RegisterContainerAnswer,
+				Sender:         ns.LocalAddress,
+				ContentType:    Messages.RegisterContainerAnswerContent,
+				Content:        string(payloadStr),
+				CorrelationID:  message.CorrelationID,
+				ExpectResponse: false,
+			}
+		}
 		return
 	}
 }

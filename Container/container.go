@@ -30,10 +30,11 @@ func NewContainer(mainAddress, localAddress string) *container {
 	payload := Messages.RegisterContainerPayload{Address: localAddress}
 	payloadStr, _ := json.Marshal(payload) // handle error properly
 	message := Messages.Message{
-		Type:        Messages.RegisterContainer,
-		Sender:      localAddress,
-		ContentType: Messages.RegisterContainerContent,
-		Content:     string(payloadStr),
+		Type:           Messages.RegisterContainer,
+		Sender:         localAddress,
+		ContentType:    Messages.RegisterContainerContent,
+		Content:        string(payloadStr),
+		ExpectResponse: true,
 	}
 
 	// Send the message and wait for a response
@@ -46,13 +47,15 @@ func NewContainer(mainAddress, localAddress string) *container {
 		log.Fatalf("Failed to parse register container response: %v", err)
 	}
 
-	return &container{
+	container := &container{
 		id:               answerPayload.ID, // Use the ID returned from the main container
 		localAdress:      localAddress,
 		agents:           make(map[string]Agent.Agent),
 		mainServerAdress: mainAddress,
 		networkService:   networkService,
 	}
+	container.networkService.SetContainerOps(container)
+	return container
 }
 
 func NewMainContainer(ID, mainAdress string) *MainContainer {
@@ -66,6 +69,17 @@ func NewMainContainer(ID, mainAdress string) *MainContainer {
 		yellowPage: *YellowPage.NewYellowPage(),
 	}
 }
+
+func (container *container) RegisterContainer(containerID, address string) {
+	// No-op for regular containers
+	return
+}
+
+func (container *container) RegisterAgent(containerId string) (int, error) {
+	// No-op for regular containers
+	return 0, fmt.Errorf("Not a main container")
+}
+
 func (MainContainer *MainContainer) RegisterContainer(containerID, Address string) {
 	MainContainer.yellowPage.RegisterContainer(containerID, Address)
 }
