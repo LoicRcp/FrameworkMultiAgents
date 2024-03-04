@@ -7,14 +7,16 @@ const (
 	RegisterContainer MessageType = iota
 	RegisterContainerAnswer
 	RegisterAgent
-	InterAgentMessage
+	RegisterAgentAnswer
+	InterAgentAsyncMessage
 )
 
 const (
 	RegisterContainerContent ContentType = iota
 	RegisterContainerAnswerContent
 	RegisterAgentContent
-	InterAgentMessageContent
+	RegisterAgentAnswerContent
+	InterAgentAsyncMessageContent
 )
 
 type Message struct {
@@ -31,7 +33,6 @@ type RegisterContainerPayload struct {
 }
 
 type RegisterContainerAnswerPayload struct {
-	ID    string
 	Error string
 }
 
@@ -39,9 +40,13 @@ type RegisterAgentPayload struct {
 	ContainerID string
 }
 
-type InterAgentMessagePayload struct {
+type InterAgentAsyncMessagePayload struct {
 	ReceiverID int
 	Content    string
+}
+
+type RegisterAgentAnswerPayload struct {
+	ID int
 }
 
 func (registerContainerPayload RegisterContainerPayload) String() string {
@@ -54,4 +59,16 @@ func (registerContainerAnswerPayload RegisterContainerAnswerPayload) String() st
 
 func (registerAgentPayload RegisterAgentPayload) String() string {
 	return registerAgentPayload.ContainerID
+}
+
+func (interAgentAsyncMessagePayload InterAgentAsyncMessagePayload) String() string {
+	return interAgentAsyncMessagePayload.Content
+}
+
+func (registerAgentAnswerPayload RegisterAgentAnswerPayload) String() string {
+	return string(registerAgentAnswerPayload.ID)
+}
+
+func (message Message) String() string {
+	return message.Sender + message.Content
 }

@@ -1,11 +1,14 @@
 package Agent
 
-type Agent struct {
-	ID               int `json:"id"`
-	CurrentBehaviour Behaviour
-	AgentBehaviours  map[string]Behaviour
+import "FrameworkMultiAgents/Messages"
 
-	// Comment on met les attributs de l'agent ? Transformer ça en interface ?
+type Agent struct {
+	ID                      int `json:"id"`
+	CurrentBehaviour        Behaviour
+	AgentBehaviours         map[string]Behaviour
+	MailBox                 chan Messages.Message
+	SendAsyncMessageToAgent func(message Messages.Message, receiverId int)
+	GetSyncChannelWithAgent func(agentId int) chan Messages.Message
 }
 
 func (agent *Agent) Perceive() {
@@ -26,4 +29,19 @@ type Behaviour interface {
 	Act(params ...interface{})
 }
 
-// rajouter le start
+func (agent *Agent) takeMail(message Messages.Message) {
+	agent.MailBox <- message
+}
+
+func (agent *Agent) sendMail(message Messages.Message, receiverId int) {
+	agent.SendAsyncMessageToAgent(message, receiverId)
+}
+
+func NewAgent(id int, sendMessageToContainer func(message Messages.Message, receiverId int)) *Agent {
+	return &Agent{
+		ID:                      id,
+		AgentBehaviours:         make(map[string]Behaviour),
+		MailBox:                 make(chan Messages.Message),
+		SendAsyncMessageToAgent: sendMessageToContainer,
+	}
+}

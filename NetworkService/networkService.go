@@ -5,11 +5,10 @@ import (
 	"FrameworkMultiAgents/containerOps"
 	"encoding/json"
 	"fmt"
+	"github.com/gorilla/websocket"
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/gorilla/websocket"
 )
 
 type NetworkService struct {
@@ -148,6 +147,41 @@ func (ns *NetworkService) processIncomingMessage(message Messages.Message) {
 				CorrelationID:  message.CorrelationID,
 				ExpectResponse: false,
 			}
+			ns.SendMessage(response, message.Sender)
+		} else if message.Type == Messages.RegisterAgent {
+			var payload Messages.RegisterAgentPayload
+			if err := json.Unmarshal([]byte(message.Content), &payload); err != nil {
+				fmt.Printf("Error unmarshaling RegisterAgentPayload: %v", err)
+				return
+			}
+			id, err := ns.containerOps.RegisterAgent(payload.ContainerID)
+			if err != nil {
+				fmt.Printf("Error registering agent: %v", err)
+				return
+			}
+			payload2 := Messages.RegisterAgentAnswerPayload{
+				ID: id,
+			}
+			payloadStr, _ := json.Marshal(payload2)
+			response := Messages.Message{
+				Type:           Messages.RegisterAgentAnswer,
+				Sender:         ns.LocalAddress,
+				ContentType:    Messages.RegisterAgentAnswerContent,
+				Content:        string(payloadStr),
+				CorrelationID:  message.CorrelationID,
+				ExpectResponse: false,
+			}
+			ns.SendMessage(response, message.Sender)
+		} else if message.Type == Messages.InterAgentAsyncMessage {
+			var payload Messages.InterAgentAsyncMessagePayload
+			if err := json.Unmarshal([]byte(message.Content), &payload); err != nil {
+				fmt.Printf("Error unmarshaling InterAgentMessagePayload: %v", err)
+				return
+			}
+			ns.containerOps.PutMessageInMailBox(message, payload.ReceiverID)
+
+		} else {
+			fmt.Printf("No handler found for message with CorrelationID %d", message.CorrelationID)
 		}
 		return
 	}
