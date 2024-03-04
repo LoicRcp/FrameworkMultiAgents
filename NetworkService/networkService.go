@@ -56,6 +56,7 @@ func (ns *NetworkService) SendMessage(message Messages.Message, address string) 
 	select {
 	case response := <-responseChan:
 		return response, nil
+	//TODO: remplacer 30 par une constante
 	case <-time.After(30 * time.Second):
 		return Messages.Message{}, fmt.Errorf("timeout waiting for response to message with CorrelationID %d", correlationID)
 	}
@@ -83,6 +84,40 @@ func (ns *NetworkService) addHandler(correlationID int64, ch chan Messages.Messa
 	ns.handlerMutex.Lock()
 	defer ns.handlerMutex.Unlock()
 	ns.responseHandlers[correlationID] = ch
+}
+
+func (ns *NetworkService) Start() {
+	for address, conn := range ns.connPool {
+		go ns.startListening(address, conn)
+	}
+}
+
+func (ns *NetworkService) startListening(address string, conn *websocket.Conn) {
+	defer conn.Close()
+	for {
+		_, messageBytes, err := conn.ReadMessage()
+		if err != nil {
+			fmt.Printf("Error reading message: %v", err)
+			return
+		}
+		var message Messages.Message
+		if err := json.Unmarshal(messageBytes, &message); err != nil {
+			fmt.Printf("Error unmarshaling message: %v", err)
+			return
+		}
+		ns.processIncomingMessage(message)
+	}
+}
+
+func (ns *NetworkService) processIncomingMessage(message Messages.Message) {
+	ns.handlerMutex.Lock()
+	defer ns.handlerMutex.Unlock()
+	if ch, exists := ns.responseHandlers[message.CorrelationID]; exists {
+		ch <- message
+	} else {
+		fmt.Printf("No handler found for message with CorrelationID %d", message.CorrelationID)
+		return
+	}
 }
 
 func (ns *NetworkService) removeHandler(correlationID int64) {
