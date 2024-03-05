@@ -150,7 +150,7 @@ func (container *container) AddAgent() {
 	container.agents[strconv.Itoa(agentID)] = agent
 }
 
-func (container container) PutMessageInMailBox(message Messages.Message, receiverID int) {
+func (container *container) PutMessageInMailBox(message Messages.Message, receiverID int) {
 	if _, exists := container.agents[strconv.Itoa(receiverID)]; exists {
 		// send the message to the agent
 		container.agents[strconv.Itoa(receiverID)].MailBox <- message
