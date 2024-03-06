@@ -1,6 +1,9 @@
 package Agent
 
-import "FrameworkMultiAgents/Messages"
+import (
+	"FrameworkMultiAgents/Messages"
+	"strconv"
+)
 
 type Agent struct {
 	ID                      int `json:"id"`
@@ -37,9 +40,10 @@ func (agent *Agent) sendMail(message Messages.Message, receiverId int) {
 	agent.SendAsyncMessageToAgent(message, receiverId)
 }
 
-func NewAgent(id int, sendMessageToContainer func(message Messages.Message, receiverId int)) *Agent {
+func NewAgent(id string, sendMessageToContainer func(message Messages.Message, receiverId int)) *Agent {
+	idInt, _ := strconv.Atoi(id)
 	return &Agent{
-		ID:                      id,
+		ID:                      idInt,
 		AgentBehaviours:         make(map[string]Behaviour),
 		MailBox:                 make(chan Messages.Message),
 		SendAsyncMessageToAgent: sendMessageToContainer,

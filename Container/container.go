@@ -86,12 +86,12 @@ func (MainContainer *MainContainer) RegisterContainer(containerID, Address strin
 	MainContainer.yellowPage.RegisterContainer(containerID, Address)
 }
 
-func (MainContainer *MainContainer) RegisterAgent(containerId string) int {
+func (MainContainer *MainContainer) RegisterAgent(containerId string) string {
 	return MainContainer.yellowPage.RegisterAgent(containerId)
 }
 
 func (container *container) AddAgent() {
-	var agentID int
+	var agentID string
 	if mainContainer, isMain := interface{}(container).(*MainContainer); isMain {
 		agentID = mainContainer.RegisterAgent(container.id)
 	} else {
@@ -118,7 +118,7 @@ func (container *container) AddAgent() {
 		if err := json.Unmarshal([]byte(response.Content), &answerPayload); err != nil {
 			log.Fatalf("Failed to parse register agent response: %v", err)
 		}
-		agentID, _ = strconv.Atoi(answerPayload.ContainerID)
+		agentID = answerPayload.ContainerID
 	}
 	// Create the agent
 	agent := *Agent.NewAgent(agentID, func(message Messages.Message, receiverId int) {
@@ -135,7 +135,7 @@ func (container *container) AddAgent() {
 			payloadStr, _ := json.Marshal(payload) // handle error properly
 			message := Messages.Message{
 				Type:           Messages.InterAgentAsyncMessage,
-				Sender:         strconv.Itoa(agentID),
+				Sender:         agentID,
 				ContentType:    Messages.InterAgentAsyncMessageContent,
 				Content:        string(payloadStr),
 				ExpectResponse: false,
@@ -147,7 +147,7 @@ func (container *container) AddAgent() {
 			}
 		}
 	})
-	container.agents[strconv.Itoa(agentID)] = agent
+	container.agents[agentID] = agent
 }
 
 func (container *container) PutMessageInMailBox(message Messages.Message, receiverID int) {
