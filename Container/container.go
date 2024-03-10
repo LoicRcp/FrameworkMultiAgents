@@ -72,9 +72,9 @@ func NewMainContainer(ID, mainAdress string) *MainContainer {
 	}
 }
 
-func (container *container) RegisterContainer(containerID, address string) {
+func (container *container) RegisterContainer(address string) string {
 	// No-op for regular containers
-	return
+	return ""
 }
 
 func (container *container) RegisterAgent(containerId string) (int, error) {
@@ -82,8 +82,8 @@ func (container *container) RegisterAgent(containerId string) (int, error) {
 	return 0, fmt.Errorf("Not a main container")
 }
 
-func (MainContainer *MainContainer) RegisterContainer(containerID, Address string) {
-	MainContainer.yellowPage.RegisterContainer(containerID, Address)
+func (MainContainer *MainContainer) RegisterContainer(Address string) string {
+	return MainContainer.yellowPage.RegisterContainer(Address)
 }
 
 func (MainContainer *MainContainer) RegisterAgent(containerId string) string {
@@ -122,6 +122,7 @@ func (container *container) AddAgent() {
 	}
 	// Create the agent
 	agent := *Agent.NewAgent(agentID, func(message Messages.Message, receiverId int) {
+		// SEND ASYNC MESSAGE
 		// function to send message to another agent
 
 		// check if the other agent is in the same container
@@ -129,6 +130,14 @@ func (container *container) AddAgent() {
 			// send the message to the agent
 			container.agents[strconv.Itoa(receiverId)].MailBox <- message
 		} else {
+
+			// Resolve the agent address
+			receiverIdStr := strconv.Itoa(receiverId)
+			receiverAdress, err := container.ResolveAgentAddress(receiverIdStr)
+			if err != nil {
+				log.Fatalf("Failed to resolve agent address: %v", err)
+			}
+
 			// send the message to the main container
 			// Prepare the message
 			payload := Messages.InterAgentAsyncMessagePayload{ReceiverID: receiverId, Content: message.Content}
@@ -141,7 +150,7 @@ func (container *container) AddAgent() {
 				ExpectResponse: false,
 			}
 			// Send the message
-			_, err := container.networkService.SendMessage(message, container.mainServerAdress)
+			_, err = container.networkService.SendMessage(message, receiverAdress)
 			if err != nil {
 				log.Fatalf("Failed to send message to agent: %v", err)
 			}
@@ -156,4 +165,33 @@ func (container *container) PutMessageInMailBox(message Messages.Message, receiv
 		container.agents[strconv.Itoa(receiverID)].MailBox <- message
 	}
 	return
+}
+
+func (container *container) ResolveAgentAddress(agentID string) (string, error) {
+	// check if the agent is in the same container
+	if mainContainer, isMain := interface{}(container).(*MainContainer); isMain {
+		return mainContainer.yellowPage.ResolveAgentAddress(agentID)
+	}
+	// send the message to the main container
+	// Prepare the message
+	payload := Messages.GetAgentAdressPayload{AgentID: agentID}
+	payloadStr, _ := json.Marshal(payload)
+	message := Messages.Message{
+		Type:           Messages.GetAgentAdress,
+		Sender:         container.localAdress,
+		ContentType:    Messages.GetAgentAdressContent,
+		Content:        string(payloadStr),
+		ExpectResponse: true,
+	}
+	// Send the message and wait for a response
+	response, err := container.networkService.SendMessage(message, container.mainServerAdress)
+	if err != nil {
+		log.Fatalf("Failed to resolve agent address: %v", err)
+	}
+	// Parse the response
+	var answerPayload Messages.GetAgentAdressAnswerPayload
+	if err := json.Unmarshal([]byte(response.Content), &answerPayload); err != nil {
+		log.Fatalf("Failed to parse resolve agent address response: %v", err)
+	}
+	return answerPayload.Adress, nil
 }

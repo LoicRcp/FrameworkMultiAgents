@@ -133,10 +133,10 @@ func (ns *NetworkService) processIncomingMessage(message Messages.Message) {
 				fmt.Printf("Error unmarshaling RegisterContainerPayload: %v", err)
 				return
 			}
-			ns.containerOps.RegisterContainer(message.Sender, payload.Address)
+			id := ns.containerOps.RegisterContainer(payload.Address)
 			// send response without expecting a reply
 			payload2 := Messages.RegisterContainerAnswerPayload{
-				Error: "",
+				ContainerID: id,
 			}
 			payloadStr, _ := json.Marshal(payload2)
 			response := Messages.Message{
@@ -179,6 +179,31 @@ func (ns *NetworkService) processIncomingMessage(message Messages.Message) {
 				return
 			}
 			ns.containerOps.PutMessageInMailBox(message, payload.ReceiverID)
+		} else if message.Type == Messages.GetAgentAdress {
+			var payload Messages.GetAgentAdressPayload
+			if err := json.Unmarshal([]byte(message.Content), &payload); err != nil {
+				fmt.Printf("Error unmarshaling GetAgentAdressPayload: %v", err)
+				return
+			}
+			address, err := ns.containerOps.ResolveAgentAddress(payload.AgentID)
+			if err != nil {
+				fmt.Printf("Error resolving agent address: %v", err)
+				return
+			}
+			payload2 := Messages.GetAgentAdressAnswerPayload{
+				Adress: address,
+			}
+			payloadStr, _ := json.Marshal(payload2)
+			response := Messages.Message{
+				Type: Messages.GetAgentAdressAnswer,
+
+				Sender:         ns.LocalAddress,
+				ContentType:    Messages.GetAgentAdressAnswerContent,
+				Content:        string(payloadStr),
+				CorrelationID:  message.CorrelationID,
+				ExpectResponse: false,
+			}
+			ns.SendMessage(response, message.Sender)
 
 		} else {
 			fmt.Printf("No handler found for message with CorrelationID %d", message.CorrelationID)

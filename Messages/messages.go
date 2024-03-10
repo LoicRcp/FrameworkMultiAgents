@@ -1,5 +1,7 @@
 package Messages
 
+import "strconv"
+
 type MessageType int
 type ContentType int
 
@@ -9,6 +11,8 @@ const (
 	RegisterAgent
 	RegisterAgentAnswer
 	InterAgentAsyncMessage
+	GetAgentAdress
+	GetAgentAdressAnswer
 )
 
 const (
@@ -17,6 +21,8 @@ const (
 	RegisterAgentContent
 	RegisterAgentAnswerContent
 	InterAgentAsyncMessageContent
+	GetAgentAdressContent
+	GetAgentAdressAnswerContent
 )
 
 type Message struct {
@@ -33,7 +39,7 @@ type RegisterContainerPayload struct {
 }
 
 type RegisterContainerAnswerPayload struct {
-	Error string
+	ContainerID string
 }
 
 type RegisterAgentPayload struct {
@@ -49,12 +55,20 @@ type RegisterAgentAnswerPayload struct {
 	ID int
 }
 
+type GetAgentAdressPayload struct {
+	AgentID string
+}
+
+type GetAgentAdressAnswerPayload struct {
+	Adress string
+}
+
 func (registerContainerPayload RegisterContainerPayload) String() string {
 	return registerContainerPayload.Address
 }
 
 func (registerContainerAnswerPayload RegisterContainerAnswerPayload) String() string {
-	return registerContainerAnswerPayload.Error
+	return registerContainerAnswerPayload.ContainerID
 }
 
 func (registerAgentPayload RegisterAgentPayload) String() string {
@@ -66,7 +80,15 @@ func (interAgentAsyncMessagePayload InterAgentAsyncMessagePayload) String() stri
 }
 
 func (registerAgentAnswerPayload RegisterAgentAnswerPayload) String() string {
-	return string(registerAgentAnswerPayload.ID)
+	return strconv.Itoa(registerAgentAnswerPayload.ID)
+}
+
+func (getAgentAdressPayload GetAgentAdressPayload) String() string {
+	return getAgentAdressPayload.AgentID
+}
+
+func (getAgentAdressAnswerPayload GetAgentAdressAnswerPayload) String() string {
+	return getAgentAdressAnswerPayload.Adress
 }
 
 func (message Message) String() string {
