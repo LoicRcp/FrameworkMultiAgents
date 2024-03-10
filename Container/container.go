@@ -38,6 +38,8 @@ func NewContainer(mainAddress, localAddress string) *container {
 		Content:        string(payloadStr),
 		ExpectResponse: true,
 	}
+	// revoir les notation (content/payload)
+	// voir les contexte en go
 
 	// Send the message and wait for a response
 	response, err := networkService.SendMessage(message, mainAddress)
@@ -49,15 +51,15 @@ func NewContainer(mainAddress, localAddress string) *container {
 		log.Fatalf("Failed to parse register container response: %v", err)
 	}
 
-	container := &container{
+	newContainer := &container{
 		id:               localAddress,
 		localAdress:      localAddress,
 		agents:           make(map[string]Agent.Agent),
 		mainServerAdress: mainAddress,
 		networkService:   networkService,
 	}
-	container.networkService.SetContainerOps(container)
-	return container
+	newContainer.networkService.SetContainerOps(newContainer)
+	return newContainer
 }
 
 func NewMainContainer(ID, mainAdress string) *MainContainer {
