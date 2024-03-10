@@ -13,6 +13,10 @@ const (
 	InterAgentAsyncMessage
 	GetAgentAdress
 	GetAgentAdressAnswer
+	Death
+	SetSyncCommunication
+	SetSyncCommunicationAnswer
+	InterAgentSyncMessage
 )
 
 const (
@@ -23,6 +27,9 @@ const (
 	InterAgentAsyncMessageContent
 	GetAgentAdressContent
 	GetAgentAdressAnswerContent
+	SetSyncCommunicationContent
+	SetSyncCommunicationAnswerContent
+	InterAgentSyncMessageContent
 )
 
 type Message struct {
@@ -63,6 +70,19 @@ type GetAgentAdressAnswerPayload struct {
 	Adress string
 }
 
+type SetSyncCommunicationPayload struct {
+	AgentID int
+}
+
+type SetSyncCommunicationAnswerPayload struct {
+	Success bool
+}
+
+type InterAgentSyncMessagePayload struct {
+	ReceiverID int
+	Content    string
+}
+
 func (registerContainerPayload RegisterContainerPayload) String() string {
 	return registerContainerPayload.Address
 }
@@ -89,6 +109,14 @@ func (getAgentAdressPayload GetAgentAdressPayload) String() string {
 
 func (getAgentAdressAnswerPayload GetAgentAdressAnswerPayload) String() string {
 	return getAgentAdressAnswerPayload.Adress
+}
+
+func (setSyncCommunicationPayload SetSyncCommunicationPayload) String() string {
+	return strconv.Itoa(setSyncCommunicationPayload.AgentID)
+}
+
+func (setSyncCommunicationAnswerPayload SetSyncCommunicationAnswerPayload) String() string {
+	return strconv.FormatBool(setSyncCommunicationAnswerPayload.Success)
 }
 
 func (message Message) String() string {

@@ -62,7 +62,7 @@ func NewContainer(mainAddress, localAddress string) *container {
 	return newContainer
 }
 
-func NewMainContainer(ID, mainAdress string) *MainContainer {
+func NewMainContainer(mainAdress string) *MainContainer {
 	return &MainContainer{
 		container: container{
 			id:               "0",
@@ -123,41 +123,7 @@ func (container *container) AddAgent() {
 		agentID = answerPayload.ContainerID
 	}
 	// Create the agent
-	agent := *Agent.NewAgent(agentID, func(message Messages.Message, receiverId int) {
-		// SEND ASYNC MESSAGE
-		// function to send message to another agent
-
-		// check if the other agent is in the same container
-		if _, exists := container.agents[strconv.Itoa(receiverId)]; exists {
-			// send the message to the agent
-			container.agents[strconv.Itoa(receiverId)].MailBox <- message
-		} else {
-
-			// Resolve the agent address
-			receiverIdStr := strconv.Itoa(receiverId)
-			receiverAdress, err := container.ResolveAgentAddress(receiverIdStr)
-			if err != nil {
-				log.Fatalf("Failed to resolve agent address: %v", err)
-			}
-
-			// send the message to the main container
-			// Prepare the message
-			payload := Messages.InterAgentAsyncMessagePayload{ReceiverID: receiverId, Content: message.Content}
-			payloadStr, _ := json.Marshal(payload) // handle error properly
-			message := Messages.Message{
-				Type:           Messages.InterAgentAsyncMessage,
-				Sender:         agentID,
-				ContentType:    Messages.InterAgentAsyncMessageContent,
-				Content:        string(payloadStr),
-				ExpectResponse: false,
-			}
-			// Send the message
-			_, err = container.networkService.SendMessage(message, receiverAdress)
-			if err != nil {
-				log.Fatalf("Failed to send message to agent: %v", err)
-			}
-		}
-	})
+	agent := *Agent.NewAgent(agentID, container.sendMessageToAnotherAgent, container.GetSyncChannelWithAgent)
 	container.agents[agentID] = agent
 }
 
@@ -196,4 +162,89 @@ func (container *container) ResolveAgentAddress(agentID string) (string, error) 
 		log.Fatalf("Failed to parse resolve agent address response: %v", err)
 	}
 	return answerPayload.Adress, nil
+}
+
+func (container *container) sendMessageToAnotherAgent(message Messages.Message, receiverId int, agentID int) {
+	// SEND ASYNC MESSAGE
+	// function to send message to another agent
+
+	// check if the other agent is in the same container
+	if _, exists := container.agents[strconv.Itoa(receiverId)]; exists {
+		// send the message to the agent
+		container.agents[strconv.Itoa(receiverId)].MailBox <- message
+	} else {
+
+		// Resolve the agent address
+		receiverIdStr := strconv.Itoa(receiverId)
+		receiverAdress, err := container.ResolveAgentAddress(receiverIdStr)
+		if err != nil {
+			log.Fatalf("Failed to resolve agent address: %v", err)
+		}
+
+		// send the message to the main container
+		// Prepare the message
+		payload := Messages.InterAgentAsyncMessagePayload{ReceiverID: receiverId, Content: message.Content}
+		payloadStr, _ := json.Marshal(payload) // handle error properly
+		message := Messages.Message{
+			Type:           Messages.InterAgentAsyncMessage,
+			Sender:         strconv.Itoa(agentID),
+			ContentType:    Messages.InterAgentAsyncMessageContent,
+			Content:        string(payloadStr),
+			ExpectResponse: false,
+		}
+		// Send the message
+		_, err = container.networkService.SendMessage(message, receiverAdress)
+		if err != nil {
+			log.Fatalf("Failed to send message to agent: %v", err)
+		}
+	}
+}
+
+func (container *container) GetSyncChannelWithAgent(agentId int) (chan Messages.Message, error) {
+	// ask agent to return a newly created channel
+	// check if the agent is in the same container
+	if _, exists := container.agents[strconv.Itoa(agentId)]; exists {
+		agent := container.agents[strconv.Itoa(agentId)]
+		return agent.GiveNewChannel()
+	} else {
+		// Resolve the agent address
+		agentIdStr := strconv.Itoa(agentId)
+		agentAdress, err := container.ResolveAgentAddress(agentIdStr)
+		if err != nil {
+			log.Fatalf("Failed to resolve agent address: %v", err)
+		}
+
+		// Prepare the message
+		payload := Messages.SetSyncCommunicationPayload{AgentID: agentId}
+		payloadStr, _ := json.Marshal(payload) // handle error properly
+		message := Messages.Message{
+			Type:           Messages.SetSyncCommunication,
+			Sender:         container.localAdress,
+			ContentType:    Messages.SetSyncCommunicationContent,
+			Content:        string(payloadStr),
+			ExpectResponse: true,
+		}
+		// Send the message and wait for a response
+		response, err := container.networkService.SendMessage(message, agentAdress)
+		if err != nil {
+			log.Fatalf("Failed to get sync channel with agent: %v", err)
+		}
+		// Parse the response
+		var answerPayload Messages.SetSyncCommunicationAnswerPayload
+		if err := json.Unmarshal([]byte(response.Content), &answerPayload); err != nil {
+			log.Fatalf("Failed to parse get sync channel with agent response: %v", err)
+		}
+		if !answerPayload.Success {
+			return nil, fmt.Errorf("Failed to get sync channel with agent")
+		}
+		// return the channel
+		return container.networkService.GetSyncChannel(agentId)
+	}
+
+}
+
+func (container *container) Start() {
+	for _, agent := range container.agents {
+		go agent.Start()
+	}
 }
