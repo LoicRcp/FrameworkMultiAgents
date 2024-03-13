@@ -17,23 +17,23 @@ type Agent struct {
 }
 
 func (agent *Agent) Perceive() {
-	agent.CurrentBehaviour.Perceive()
+	agent.CurrentBehaviour.Perceive(agent)
 }
 
 func (agent *Agent) Decide() {
-	agent.CurrentBehaviour.Decide()
+	agent.CurrentBehaviour.Decide(agent)
 }
 
 func (agent *Agent) Act() {
-	agent.CurrentBehaviour.Act()
+	agent.CurrentBehaviour.Act(agent)
 }
 
 type Behaviour interface {
-	Perceive(params ...interface{})
-	Decide(params ...interface{})
-	Act(params ...interface{})
-	HandleMailboxMessage(message Messages.Message)
-	HandleSyncCommunication(message Messages.Message)
+	Perceive(agent *Agent, params ...interface{})
+	Decide(agent *Agent, params ...interface{})
+	Act(agent *Agent, params ...interface{})
+	HandleMailboxMessage(agent *Agent, message Messages.Message)
+	HandleSyncCommunication(agent *Agent, message Messages.Message)
 }
 
 func (agent *Agent) takeMail(message Messages.Message) {
@@ -96,7 +96,7 @@ func (agent *Agent) StopSynchronousCommunication() {
 }
 
 func (agent *Agent) handleSyncCommunication(message Messages.Message) {
-	agent.CurrentBehaviour.HandleSyncCommunication(message)
+	agent.CurrentBehaviour.HandleSyncCommunication(agent, message)
 }
 
 func (agent *Agent) RegisterBehaviour(name string, behaviour Behaviour) {
@@ -118,7 +118,7 @@ func (agent *Agent) Start() {
 			if message.Type == Messages.Death {
 				// handle death
 			} else {
-				agent.CurrentBehaviour.HandleMailboxMessage(message)
+				agent.CurrentBehaviour.HandleMailboxMessage(agent, message)
 			}
 		case message := <-agent.SynchronousChannel:
 			agent.handleSyncCommunication(message)
