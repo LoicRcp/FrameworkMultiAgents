@@ -14,7 +14,7 @@ import (
 type Container struct {
 	id               string
 	localAdress      string
-	agents           map[string]Agent.Agent
+	agents           map[string]*Agent.Agent
 	mainServerAdress string // null if the Container is the main Container
 	mainServerPort   string
 	networkService   *NetworkService.NetworkService
@@ -54,7 +54,7 @@ func NewContainer(mainAddress, localAddress string) *Container {
 	newContainer := &Container{
 		id:               localAddress,
 		localAdress:      localAddress,
-		agents:           make(map[string]Agent.Agent),
+		agents:           make(map[string]*Agent.Agent),
 		mainServerAdress: mainAddress,
 		networkService:   networkService,
 	}
@@ -67,7 +67,7 @@ func NewMainContainer(mainAdress string) *MainContainer {
 		Container: Container{
 			id:               "0",
 			localAdress:      mainAdress,
-			agents:           make(map[string]Agent.Agent),
+			agents:           make(map[string]*Agent.Agent),
 			mainServerAdress: mainAdress,
 		},
 		yellowPage: *YellowPage.NewYellowPage(),
@@ -95,7 +95,7 @@ func (MainContainer *MainContainer) RegisterAgent(containerId string) string {
 func (MainContainer *MainContainer) AddAgent() string {
 	agentID := MainContainer.RegisterAgent(MainContainer.id)
 	agent := *Agent.NewAgent(agentID, MainContainer.sendMessageToAnotherAgent, MainContainer.GetSyncChannelWithAgent)
-	MainContainer.agents[agentID] = agent
+	MainContainer.agents[agentID] = &agent
 	return agentID
 }
 
@@ -128,7 +128,7 @@ func (Container *Container) AddAgent() string {
 
 	// Create the agent
 	agent := *Agent.NewAgent(agentID, Container.sendMessageToAnotherAgent, Container.GetSyncChannelWithAgent)
-	Container.agents[agentID] = agent
+	Container.agents[agentID] = &agent
 
 	return agentID
 }
@@ -177,7 +177,10 @@ func (Container *Container) sendMessageToAnotherAgent(message Messages.Message, 
 	// check if the other agent is in the same Container
 	if _, exists := Container.agents[strconv.Itoa(receiverId)]; exists {
 		// send the message to the agent
-		Container.agents[strconv.Itoa(receiverId)].MailBox <- message
+		select {
+		case Container.agents[strconv.Itoa(receiverId)].MailBox <- message:
+		default:
+		}
 	} else {
 
 		// Resolve the agent address
@@ -249,7 +252,7 @@ func (Container *Container) GetSyncChannelWithAgent(agentId int) (chan Messages.
 
 }
 
-func (Container *Container) GetAgent(agentID string) Agent.Agent {
+func (Container *Container) GetAgent(agentID string) *Agent.Agent {
 	return Container.agents[agentID]
 }
 
