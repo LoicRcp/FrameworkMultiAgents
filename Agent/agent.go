@@ -4,6 +4,7 @@ import (
 	"FrameworkMultiAgents/Messages"
 	"fmt"
 	"strconv"
+	"time"
 )
 
 type Agent struct {
@@ -17,14 +18,26 @@ type Agent struct {
 }
 
 func (agent *Agent) Perceive() {
+	if agent.CurrentBehaviour == nil {
+		fmt.Println("No behaviour set for agent")
+		return
+	}
 	agent.CurrentBehaviour.Perceive(agent)
 }
 
 func (agent *Agent) Decide() {
+	if agent.CurrentBehaviour == nil {
+		fmt.Println("No behaviour set for agent")
+		return
+	}
 	agent.CurrentBehaviour.Decide(agent)
 }
 
 func (agent *Agent) Act() {
+	if agent.CurrentBehaviour == nil {
+		fmt.Println("No behaviour set for agent")
+		return
+	}
 	agent.CurrentBehaviour.Act(agent)
 }
 
@@ -50,30 +63,30 @@ func NewAgent(id string, sendMessageToContainer func(message Messages.Message, r
 		ID:                      idInt,
 		CurrentBehaviour:        nil,
 		AgentBehaviours:         make(map[string]Behaviour),
-		MailBox:                 make(chan Messages.Message),
+		MailBox:                 make(chan Messages.Message, 50),
 		SendAsyncMessageToAgent: sendMessageToContainer,
 		GetSyncChannelWithAgent: GetSyncChannelWithAgent,
 		SynchronousChannel:      nil,
 	}
 }
 
-func (Agent *Agent) StartSyncCommunication(receiverId int) error {
-	if Agent.SynchronousChannel != nil {
+func (agent *Agent) StartSyncCommunication(receiverId int) error {
+	if agent.SynchronousChannel != nil {
 		fmt.Errorf("The agent already has a synchronous communication")
 	}
-	channel, err := Agent.GetSyncChannelWithAgent(receiverId)
+	channel, err := agent.GetSyncChannelWithAgent(receiverId)
 	if err != nil {
 		return err
 	}
-	Agent.SynchronousChannel = channel
+	agent.SynchronousChannel = channel
 	return nil
 }
 
-func (Agent *Agent) SendSyncMessage(message Messages.Message) error {
-	if Agent.SynchronousChannel == nil {
+func (agent *Agent) SendSyncMessage(message Messages.Message) error {
+	if agent.SynchronousChannel == nil {
 		fmt.Errorf("The agent does not have a synchronous communication")
 	}
-	Agent.SynchronousChannel <- message
+	agent.SynchronousChannel <- message
 	return nil
 }
 
