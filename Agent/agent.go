@@ -140,5 +140,6 @@ func (agent *Agent) Start() {
 			agent.Decide()
 			agent.Act()
 		}
+		time.Sleep(1 * time.Second)
 	}
 }
