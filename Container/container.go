@@ -11,21 +11,21 @@ import (
 	"strconv"
 )
 
-type container struct {
+type Container struct {
 	id               string
 	localAdress      string
 	agents           map[string]Agent.Agent
-	mainServerAdress string // null if the container is the main container
+	mainServerAdress string // null if the Container is the main Container
 	mainServerPort   string
 	networkService   *NetworkService.NetworkService
 }
 
 type MainContainer struct {
-	container
+	Container
 	yellowPage YellowPage.YellowPage
 }
 
-func NewContainer(mainAddress, localAddress string) *container {
+func NewContainer(mainAddress, localAddress string) *Container {
 	networkService := NetworkService.NewNetworkService(mainAddress, localAddress)
 
 	// Prepare the message
@@ -44,14 +44,14 @@ func NewContainer(mainAddress, localAddress string) *container {
 	// Send the message and wait for a response
 	response, err := networkService.SendMessage(message, mainAddress)
 	if err != nil {
-		log.Fatalf("Failed to register container: %v", err)
+		log.Fatalf("Failed to register Container: %v", err)
 	}
 	var answerPayload Messages.RegisterContainerAnswerPayload
 	if err := json.Unmarshal([]byte(response.Content), &answerPayload); err != nil {
-		log.Fatalf("Failed to parse register container response: %v", err)
+		log.Fatalf("Failed to parse register Container response: %v", err)
 	}
 
-	newContainer := &container{
+	newContainer := &Container{
 		id:               localAddress,
 		localAdress:      localAddress,
 		agents:           make(map[string]Agent.Agent),
@@ -64,7 +64,7 @@ func NewContainer(mainAddress, localAddress string) *container {
 
 func NewMainContainer(mainAdress string) *MainContainer {
 	return &MainContainer{
-		container: container{
+		Container: Container{
 			id:               "0",
 			localAdress:      mainAdress,
 			agents:           make(map[string]Agent.Agent),
@@ -74,14 +74,14 @@ func NewMainContainer(mainAdress string) *MainContainer {
 	}
 }
 
-func (container *container) RegisterContainer(address string) string {
+func (Container *Container) RegisterContainer(address string) string {
 	// No-op for regular containers
 	return ""
 }
 
-func (container *container) RegisterAgent(containerId string) (int, error) {
+func (Container *Container) RegisterAgent(containerId string) (int, error) {
 	// No-op for regular containers
-	return 0, fmt.Errorf("Not a main container")
+	return 0, fmt.Errorf("Not a main Container")
 }
 
 func (MainContainer *MainContainer) RegisterContainer(Address string) string {
@@ -92,67 +92,73 @@ func (MainContainer *MainContainer) RegisterAgent(containerId string) string {
 	return MainContainer.yellowPage.RegisterAgent(containerId)
 }
 
-func (container *container) AddAgent() {
-	var agentID string
-	if mainContainer, isMain := interface{}(container).(*MainContainer); isMain {
-		agentID = mainContainer.RegisterAgent(container.id)
-	} else {
-
-		// Prepare the message
-		payload := Messages.RegisterAgentPayload{ContainerID: container.id}
-		payloadStr, _ := json.Marshal(payload) // handle error properly
-		message := Messages.Message{
-			Type:           Messages.RegisterAgent,
-			Sender:         container.localAdress,
-			ContentType:    Messages.RegisterAgentContent,
-			Content:        string(payloadStr),
-			ExpectResponse: true,
-		}
-
-		// Send the message and wait for a response
-		response, err := container.networkService.SendMessage(message, container.mainServerAdress)
-		if err != nil {
-			log.Fatalf("Failed to register agent: %v", err)
-		}
-
-		// Parse the response
-		var answerPayload Messages.RegisterAgentPayload
-		if err := json.Unmarshal([]byte(response.Content), &answerPayload); err != nil {
-			log.Fatalf("Failed to parse register agent response: %v", err)
-		}
-		agentID = answerPayload.ContainerID
-	}
-	// Create the agent
-	agent := *Agent.NewAgent(agentID, container.sendMessageToAnotherAgent, container.GetSyncChannelWithAgent)
-	container.agents[agentID] = agent
+func (MainContainer *MainContainer) AddAgent() string {
+	agentID := MainContainer.RegisterAgent(MainContainer.id)
+	agent := *Agent.NewAgent(agentID, MainContainer.sendMessageToAnotherAgent, MainContainer.GetSyncChannelWithAgent)
+	MainContainer.agents[agentID] = agent
+	return agentID
 }
 
-func (container *container) PutMessageInMailBox(message Messages.Message, receiverID int) {
-	if _, exists := container.agents[strconv.Itoa(receiverID)]; exists {
+func (Container *Container) AddAgent() string {
+	var agentID string
+
+	// Prepare the message
+	payload := Messages.RegisterAgentPayload{ContainerID: Container.id}
+	payloadStr, _ := json.Marshal(payload) // handle error properly
+	message := Messages.Message{
+		Type:           Messages.RegisterAgent,
+		Sender:         Container.localAdress,
+		ContentType:    Messages.RegisterAgentContent,
+		Content:        string(payloadStr),
+		ExpectResponse: true,
+	}
+
+	// Send the message and wait for a response
+	response, err := Container.networkService.SendMessage(message, Container.mainServerAdress)
+	if err != nil {
+		log.Fatalf("Failed to register agent: %v", err)
+	}
+
+	// Parse the response
+	var answerPayload Messages.RegisterAgentPayload
+	if err := json.Unmarshal([]byte(response.Content), &answerPayload); err != nil {
+		log.Fatalf("Failed to parse register agent response: %v", err)
+	}
+	agentID = answerPayload.ContainerID
+
+	// Create the agent
+	agent := *Agent.NewAgent(agentID, Container.sendMessageToAnotherAgent, Container.GetSyncChannelWithAgent)
+	Container.agents[agentID] = agent
+
+	return agentID
+}
+
+func (Container *Container) PutMessageInMailBox(message Messages.Message, receiverID int) {
+	if _, exists := Container.agents[strconv.Itoa(receiverID)]; exists {
 		// send the message to the agent
-		container.agents[strconv.Itoa(receiverID)].MailBox <- message
+		Container.agents[strconv.Itoa(receiverID)].MailBox <- message
 	}
 	return
 }
 
-func (container *container) ResolveAgentAddress(agentID string) (string, error) {
-	// check if the agent is in the same container
-	if mainContainer, isMain := interface{}(container).(*MainContainer); isMain {
-		return mainContainer.yellowPage.ResolveAgentAddress(agentID)
-	}
-	// send the message to the main container
+func (MainContainer *MainContainer) ResolveAgentAddress(agentID string) (string, error) {
+	return MainContainer.yellowPage.ResolveAgentAddress(agentID)
+}
+
+func (Container *Container) ResolveAgentAddress(agentID string) (string, error) {
+	// send the message to the main Container
 	// Prepare the message
 	payload := Messages.GetAgentAdressPayload{AgentID: agentID}
 	payloadStr, _ := json.Marshal(payload)
 	message := Messages.Message{
 		Type:           Messages.GetAgentAdress,
-		Sender:         container.localAdress,
+		Sender:         Container.localAdress,
 		ContentType:    Messages.GetAgentAdressContent,
 		Content:        string(payloadStr),
 		ExpectResponse: true,
 	}
 	// Send the message and wait for a response
-	response, err := container.networkService.SendMessage(message, container.mainServerAdress)
+	response, err := Container.networkService.SendMessage(message, Container.mainServerAdress)
 	if err != nil {
 		log.Fatalf("Failed to resolve agent address: %v", err)
 	}
@@ -164,24 +170,24 @@ func (container *container) ResolveAgentAddress(agentID string) (string, error) 
 	return answerPayload.Adress, nil
 }
 
-func (container *container) sendMessageToAnotherAgent(message Messages.Message, receiverId int, agentID int) {
+func (Container *Container) sendMessageToAnotherAgent(message Messages.Message, receiverId int, agentID int) {
 	// SEND ASYNC MESSAGE
 	// function to send message to another agent
 
-	// check if the other agent is in the same container
-	if _, exists := container.agents[strconv.Itoa(receiverId)]; exists {
+	// check if the other agent is in the same Container
+	if _, exists := Container.agents[strconv.Itoa(receiverId)]; exists {
 		// send the message to the agent
-		container.agents[strconv.Itoa(receiverId)].MailBox <- message
+		Container.agents[strconv.Itoa(receiverId)].MailBox <- message
 	} else {
 
 		// Resolve the agent address
 		receiverIdStr := strconv.Itoa(receiverId)
-		receiverAdress, err := container.ResolveAgentAddress(receiverIdStr)
+		receiverAdress, err := Container.ResolveAgentAddress(receiverIdStr)
 		if err != nil {
 			log.Fatalf("Failed to resolve agent address: %v", err)
 		}
 
-		// send the message to the main container
+		// send the message to the main Container
 		// Prepare the message
 		payload := Messages.InterAgentAsyncMessagePayload{ReceiverID: receiverId, Content: message.Content}
 		payloadStr, _ := json.Marshal(payload) // handle error properly
@@ -193,23 +199,23 @@ func (container *container) sendMessageToAnotherAgent(message Messages.Message, 
 			ExpectResponse: false,
 		}
 		// Send the message
-		_, err = container.networkService.SendMessage(message, receiverAdress)
+		_, err = Container.networkService.SendMessage(message, receiverAdress)
 		if err != nil {
 			log.Fatalf("Failed to send message to agent: %v", err)
 		}
 	}
 }
 
-func (container *container) GetSyncChannelWithAgent(agentId int) (chan Messages.Message, error) {
+func (Container *Container) GetSyncChannelWithAgent(agentId int) (chan Messages.Message, error) {
 	// ask agent to return a newly created channel
-	// check if the agent is in the same container
-	if _, exists := container.agents[strconv.Itoa(agentId)]; exists {
-		agent := container.agents[strconv.Itoa(agentId)]
+	// check if the agent is in the same Container
+	if _, exists := Container.agents[strconv.Itoa(agentId)]; exists {
+		agent := Container.agents[strconv.Itoa(agentId)]
 		return agent.GiveNewChannel()
 	} else {
 		// Resolve the agent address
 		agentIdStr := strconv.Itoa(agentId)
-		agentAdress, err := container.ResolveAgentAddress(agentIdStr)
+		agentAdress, err := Container.ResolveAgentAddress(agentIdStr)
 		if err != nil {
 			log.Fatalf("Failed to resolve agent address: %v", err)
 		}
@@ -219,13 +225,13 @@ func (container *container) GetSyncChannelWithAgent(agentId int) (chan Messages.
 		payloadStr, _ := json.Marshal(payload) // handle error properly
 		message := Messages.Message{
 			Type:           Messages.SetSyncCommunication,
-			Sender:         container.localAdress,
+			Sender:         Container.localAdress,
 			ContentType:    Messages.SetSyncCommunicationContent,
 			Content:        string(payloadStr),
 			ExpectResponse: true,
 		}
 		// Send the message and wait for a response
-		response, err := container.networkService.SendMessage(message, agentAdress)
+		response, err := Container.networkService.SendMessage(message, agentAdress)
 		if err != nil {
 			log.Fatalf("Failed to get sync channel with agent: %v", err)
 		}
@@ -238,13 +244,17 @@ func (container *container) GetSyncChannelWithAgent(agentId int) (chan Messages.
 			return nil, fmt.Errorf("Failed to get sync channel with agent")
 		}
 		// return the channel
-		return container.networkService.GetSyncChannel(agentId)
+		return Container.networkService.GetSyncChannel(agentId)
 	}
 
 }
 
-func (container *container) Start() {
-	for _, agent := range container.agents {
+func (Container *Container) GetAgent(agentID string) Agent.Agent {
+	return Container.agents[agentID]
+}
+
+func (Container *Container) Start() {
+	for _, agent := range Container.agents {
 		go agent.Start()
 	}
 }
