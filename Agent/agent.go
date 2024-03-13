@@ -95,6 +95,7 @@ func (agent *Agent) SendSyncMessage(message Messages.Message) error {
 func (agent *Agent) GiveNewChannel() (chan Messages.Message, error) {
 	if agent.SynchronousChannel == nil {
 		agent.SynchronousChannel = make(chan Messages.Message)
+		return agent.SynchronousChannel, nil
 	}
 	return nil, fmt.Errorf("The agent already has a synchronous communication")
 }
