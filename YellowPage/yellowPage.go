@@ -54,6 +54,7 @@ func (yellowPage *YellowPage) ResolveAgentAddress(agentID string) (string, error
 	if !ok {
 		return "", nil
 	}
+	return containerID, nil
 	adress, ok := yellowPage.ContainerRegistry[containerID]
 	if !ok {
 		return "", nil

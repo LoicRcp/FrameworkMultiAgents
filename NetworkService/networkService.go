@@ -6,6 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/gorilla/websocket"
+	"io/ioutil"
+	"log"
+	"net/http"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -36,6 +39,7 @@ func NewNetworkService(mainContainerAddress, localAddress string) *NetworkServic
 		LocalAddress:         localAddress,
 		responseHandlers:     make(map[int64]chan Messages.Message),
 		connPool:             make(map[string]*websocket.Conn),
+		syncChannels:         make(map[int]SyncCommunication),
 	}
 	return ns
 }
@@ -73,7 +77,7 @@ func (ns *NetworkService) SendMessage(message Messages.Message, address string) 
 		select {
 		case response := <-responseChan:
 			return response, nil
-		case <-time.After(30 * time.Second): // Consider making this timeout configurable
+		case <-time.After(3000 * time.Second): // Consider making this timeout configurable
 			return Messages.Message{}, fmt.Errorf("timeout waiting for response to message with CorrelationID %d", correlationID)
 		}
 	}
@@ -92,12 +96,37 @@ func (ns *NetworkService) getConnection(address string) (*websocket.Conn, error)
 	}
 
 	// Create a new connection and add it to the pool
-	conn, _, err := websocket.DefaultDialer.Dial(fmt.Sprintf("ws://%s", address), nil)
+	conn, resp, err := websocket.DefaultDialer.Dial(fmt.Sprintf("ws://%s", address), nil)
 	if err != nil {
+		// Read the response body on bad handshake
+		if resp != nil {
+			bodyBytes, errRead := ioutil.ReadAll(resp.Body)
+			resp.Body.Close()
+			if errRead == nil {
+				log.Printf("Handshake failed with status %d and body: %s\n", resp.StatusCode, string(bodyBytes))
+			}
+		}
 		return nil, fmt.Errorf("WebSocket Dial Error: %w", err)
 	}
+
+	initMsg := struct {
+		Identifier string `json:"identifier"`
+	}{
+		Identifier: ns.LocalAddress,
+	}
+	msgBytes, err := json.Marshal(initMsg)
+	if err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("Error marshaling init message: %w", err)
+	}
+
+	if err := conn.WriteMessage(websocket.TextMessage, msgBytes); err != nil {
+		conn.Close() // Close the connection on error
+		return nil, fmt.Errorf("error sending identifier message: %w", err)
+	}
+
 	ns.connPool[address] = conn
-	go ns.startListening(address, conn)
+	go ns.startListening(conn)
 	return conn, nil
 }
 
@@ -107,21 +136,28 @@ func (ns *NetworkService) addHandler(correlationID int64, ch chan Messages.Messa
 	ns.responseHandlers[correlationID] = ch
 }
 
-func (ns *NetworkService) startListening(address string, conn *websocket.Conn) {
+// startListening reads messages from the WebSocket connection and processes them.
+func (ns *NetworkService) startListening(conn *websocket.Conn) {
 	defer conn.Close()
 	for {
 		_, messageBytes, err := conn.ReadMessage()
 		if err != nil {
-			fmt.Printf("Error reading message: %v", err)
-			return
+			// Log the error and exit the loop if the connection is closed or encounters an error
+			log.Printf("Error reading message: %v", err)
+			break // Exit the loop and end the goroutine
 		}
+
 		var message Messages.Message
 		if err := json.Unmarshal(messageBytes, &message); err != nil {
-			fmt.Printf("Error unmarshaling message: %v", err)
-			return
+			log.Printf("Error unmarshaling message: %v", err)
+			continue // Continue the loop, waiting for the next message
 		}
+
+		// Process the incoming message
 		ns.processIncomingMessage(message)
 	}
+
+	// Perform any cleanup if necessary, e.g., remove the connection from the pool
 }
 
 func (ns *NetworkService) processIncomingMessage(message Messages.Message) {
@@ -157,11 +193,8 @@ func (ns *NetworkService) processIncomingMessage(message Messages.Message) {
 				fmt.Printf("Error unmarshaling RegisterAgentPayload: %v", err)
 				return
 			}
-			id, err := ns.containerOps.RegisterAgent(payload.ContainerID)
-			if err != nil {
-				fmt.Printf("Error registering agent: %v", err)
-				return
-			}
+			id, _ := strconv.Atoi(ns.containerOps.RegisterAgent(payload.ContainerID))
+
 			payload2 := Messages.RegisterAgentAnswerPayload{
 				ID: id,
 			}
@@ -233,6 +266,9 @@ func (ns *NetworkService) processIncomingMessage(message Messages.Message) {
 					receiverAdress: message.Sender,
 					syncChannel:    make(chan Messages.Message),
 				}
+
+				ns.containerOps.UpdateAgentSyncChannel(strconv.Itoa(payload.AgentID), ns.syncChannels[payload.AgentID].syncChannel)
+				go ns.ListenToSyncChannel(ns.syncChannels[payload.AgentID].syncChannel, message.Sender)
 				payload2 := Messages.SetSyncCommunicationAnswerPayload{
 					Success: true,
 				}
@@ -310,17 +346,29 @@ func (ns *NetworkService) GetSyncChannelWithAgent(SenderID, ReceiverID int) (cha
 		syncChannel:    make(chan Messages.Message),
 	}
 
-	go ns.listenToSyncChannel(ns.syncChannels[SenderID].syncChannel, ns.syncChannels[SenderID].receiverAdress)
+	go ns.ListenToSyncChannel(ns.syncChannels[SenderID].syncChannel, ns.syncChannels[SenderID].receiverAdress)
 
 	return ns.syncChannels[SenderID].syncChannel, nil
 
 }
 
-func (ns *NetworkService) listenToSyncChannel(ch chan Messages.Message, address string) {
+func (ns *NetworkService) ListenToSyncChannel(ch chan Messages.Message, address string) {
 	for {
 		message := <-ch
 		ns.SendMessage(message, address)
 	}
+}
+
+func (ns *NetworkService) CreateSyncChannel(agentID int, receiverAdress string) (chan Messages.Message, error) {
+	if _, exists := ns.syncChannels[agentID]; exists {
+		return nil, fmt.Errorf("The agent already has a synchronous communication")
+	}
+	ns.syncChannels[agentID] = SyncCommunication{
+		receiverID:     agentID,
+		receiverAdress: receiverAdress,
+		syncChannel:    make(chan Messages.Message),
+	}
+	return ns.syncChannels[agentID].syncChannel, nil
 }
 
 func (ns *NetworkService) GetSyncChannel(agentID int) (chan Messages.Message, error) {
@@ -328,4 +376,42 @@ func (ns *NetworkService) GetSyncChannel(agentID int) (chan Messages.Message, er
 		return syncComm.syncChannel, nil
 	}
 	return nil, fmt.Errorf("no synchronous channel found for agent with ID %d", agentID)
+}
+
+// create server endpoint
+
+func (ns *NetworkService) Start() error {
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Upgrade(w, r, nil, 1024, 1024)
+		if err != nil {
+			fmt.Printf("Error upgrading connection: %v", err)
+			return
+		}
+
+		// Read the first message to get the client-provided identifier
+		_, messageBytes, err := conn.ReadMessage()
+		if err != nil {
+			log.Printf("Error reading initial message: %v", err)
+			conn.Close()
+			return
+		}
+
+		var initMsg struct {
+			Identifier string `json:"identifier"`
+		}
+		if err := json.Unmarshal(messageBytes, &initMsg); err != nil {
+			log.Printf("Error unmarshaling initial message: %v", err)
+			conn.Close()
+			return
+		}
+
+		ns.connPoolMutex.Lock()
+		ns.connPool[initMsg.Identifier] = conn
+		ns.connPoolMutex.Unlock()
+
+		go ns.startListening(conn)
+	})
+
+	fmt.Printf("Websocket server started on %s\n", ns.LocalAddress)
+	return http.ListenAndServe(ns.LocalAddress, nil)
 }

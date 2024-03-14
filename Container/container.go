@@ -59,19 +59,26 @@ func NewContainer(mainAddress, localAddress string) *Container {
 		networkService:   networkService,
 	}
 	newContainer.networkService.SetContainerOps(newContainer)
+	go newContainer.networkService.Start()
 	return newContainer
 }
 
 func NewMainContainer(mainAdress string) *MainContainer {
-	return &MainContainer{
-		Container: Container{
-			id:               "0",
-			localAdress:      mainAdress,
-			agents:           make(map[string]*Agent.Agent),
-			mainServerAdress: mainAdress,
-		},
+	container := Container{
+		id:               mainAdress,
+		localAdress:      mainAdress,
+		agents:           make(map[string]*Agent.Agent),
+		mainServerAdress: "",
+		networkService:   NetworkService.NewNetworkService(mainAdress, mainAdress),
+	}
+	go container.networkService.Start()
+	mainContainer := MainContainer{
+		Container:  container,
 		yellowPage: *YellowPage.NewYellowPage(),
 	}
+	container.networkService.SetContainerOps(&mainContainer)
+	mainContainer.yellowPage.RegisterContainer(mainAdress)
+	return &mainContainer
 }
 
 func (Container *Container) RegisterContainer(address string) string {
@@ -79,9 +86,9 @@ func (Container *Container) RegisterContainer(address string) string {
 	return ""
 }
 
-func (Container *Container) RegisterAgent(containerId string) (int, error) {
+func (Container *Container) RegisterAgent(containerId string) string {
 	// No-op for regular containers
-	return 0, fmt.Errorf("Not a main Container")
+	return ""
 }
 
 func (MainContainer *MainContainer) RegisterContainer(Address string) string {
@@ -209,13 +216,14 @@ func (Container *Container) sendMessageToAnotherAgent(message Messages.Message, 
 	}
 }
 
-func (Container *Container) GetSyncChannelWithAgent(agentId int) (chan Messages.Message, error) {
+func (Container *Container) GetSyncChannelWithAgent(sourceAgentID, agentId int) (chan Messages.Message, error) {
 	// ask agent to return a newly created channel
 	// check if the agent is in the same Container
 	if _, exists := Container.agents[strconv.Itoa(agentId)]; exists {
 		agent := Container.agents[strconv.Itoa(agentId)]
 		return agent.GiveNewChannel()
 	} else {
+
 		// Resolve the agent address
 		agentIdStr := strconv.Itoa(agentId)
 		agentAdress, err := Container.ResolveAgentAddress(agentIdStr)
@@ -246,8 +254,10 @@ func (Container *Container) GetSyncChannelWithAgent(agentId int) (chan Messages.
 		if !answerPayload.Success {
 			return nil, fmt.Errorf("Failed to get sync channel with agent")
 		}
-		// return the channel
-		return Container.networkService.GetSyncChannel(agentId)
+		channel, err := Container.networkService.CreateSyncChannel(sourceAgentID, agentAdress)
+		go Container.networkService.ListenToSyncChannel(channel, agentAdress)
+		return channel, nil
+
 	}
 
 }
@@ -260,4 +270,8 @@ func (Container *Container) Start() {
 	for _, agent := range Container.agents {
 		go agent.Start()
 	}
+}
+
+func (Container *Container) UpdateAgentSyncChannel(agentID string, channel chan Messages.Message) {
+	Container.agents[agentID].SynchronousChannel = channel
 }

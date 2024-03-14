@@ -13,7 +13,7 @@ type Agent struct {
 	AgentBehaviours         map[string]Behaviour
 	MailBox                 chan Messages.Message
 	SendAsyncMessageToAgent func(message Messages.Message, receiverId int, agentId int)
-	GetSyncChannelWithAgent func(agentId int) (chan Messages.Message, error)
+	GetSyncChannelWithAgent func(SourceID, agentId int) (chan Messages.Message, error)
 	SynchronousChannel      chan Messages.Message
 }
 
@@ -57,7 +57,7 @@ func (agent *Agent) SendMail(message Messages.Message, receiverId int) {
 	agent.SendAsyncMessageToAgent(message, receiverId, agent.ID)
 }
 
-func NewAgent(id string, sendMessageToContainer func(message Messages.Message, receiverId, agentId int), GetSyncChannelWithAgent func(agentId int) (chan Messages.Message, error)) *Agent {
+func NewAgent(id string, sendMessageToContainer func(message Messages.Message, receiverId, agentId int), GetSyncChannelWithAgent func(SourceAgent, agentId int) (chan Messages.Message, error)) *Agent {
 	idInt, _ := strconv.Atoi(id)
 	return &Agent{
 		ID:                      idInt,
@@ -74,7 +74,7 @@ func (agent *Agent) StartSyncCommunication(receiverId int) error {
 	if agent.SynchronousChannel != nil {
 		fmt.Errorf("The agent already has a synchronous communication")
 	}
-	channel, err := agent.GetSyncChannelWithAgent(receiverId)
+	channel, err := agent.GetSyncChannelWithAgent(agent.ID, receiverId)
 	if err != nil {
 		return err
 	}
