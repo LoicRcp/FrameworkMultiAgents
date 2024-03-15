@@ -290,6 +290,7 @@ func (ns *NetworkService) processIncomingMessage(message Messages.Message) {
 				return
 			}
 			if _, exists := ns.syncChannels[payload.ReceiverID]; exists {
+				message.Sender = "NetworkService"
 				ns.syncChannels[payload.ReceiverID].syncChannel <- message
 			} else {
 				fmt.Printf("No synchronous channel found for agent with ID %d", payload.ReceiverID)
@@ -311,6 +312,7 @@ func (ns *NetworkService) removeHandler(correlationID int64) {
 	}
 }
 
+/*
 func (ns *NetworkService) GetSyncChannelWithAgent(SenderID, ReceiverID int) (chan Messages.Message, error) {
 	if _, exists := ns.syncChannels[SenderID]; exists {
 		return nil, fmt.Errorf("Agent already has a synchronous communication")
@@ -351,11 +353,22 @@ func (ns *NetworkService) GetSyncChannelWithAgent(SenderID, ReceiverID int) (cha
 	return ns.syncChannels[SenderID].syncChannel, nil
 
 }
+*/
 
 func (ns *NetworkService) ListenToSyncChannel(ch chan Messages.Message, address string) {
 	for {
-		message := <-ch
-		ns.SendMessage(message, address)
+		message, ok := <-ch
+		if ok {
+			if message.Sender == "NetworkService" {
+				ch <- message
+			} else {
+				ns.SendMessage(message, address)
+			}
+		} else {
+			fmt.Printf("Channel closed")
+			return
+		}
+
 	}
 }
 

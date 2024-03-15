@@ -127,11 +127,11 @@ func (Container *Container) AddAgent() string {
 	}
 
 	// Parse the response
-	var answerPayload Messages.RegisterAgentPayload
+	var answerPayload Messages.RegisterAgentAnswerPayload
 	if err := json.Unmarshal([]byte(response.Content), &answerPayload); err != nil {
 		log.Fatalf("Failed to parse register agent response: %v", err)
 	}
-	agentID = answerPayload.ContainerID
+	agentID = strconv.Itoa(answerPayload.ID)
 
 	// Create the agent
 	agent := *Agent.NewAgent(agentID, Container.sendMessageToAnotherAgent, Container.GetSyncChannelWithAgent)
