@@ -62,19 +62,40 @@ func (b *BasicBehaviour1) HandleMailboxMessage(agent *Agent.Agent, msg Messages.
 	b.tick++
 }
 func (b *BasicBehaviour1) HandleSyncCommunication(agent *Agent.Agent, msg Messages.Message) {
-	if msg.Content == "Ping" && b.tick < 10 {
+	var payload Messages.InterAgentSyncMessagePayload
+	err := json.Unmarshal([]byte(msg.Content), &payload)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	if payload.Content == "Ping" && b.tick < 10 {
+
+		payload := Messages.InterAgentSyncMessagePayload{
+			ReceiverID: 1,
+			Content:    "Pong",
+		}
+		payloadStr, _ := json.Marshal(payload)
+
 		agent.SendSyncMessage(Messages.Message{
 			Type:        Messages.InterAgentSyncMessage,
 			Sender:      fmt.Sprintf("%d", agent.ID),
 			ContentType: Messages.InterAgentSyncMessageContent,
-			Content:     "Pong",
+			Content:     string(payloadStr),
 		})
+
 	} else if b.tick >= 10 {
+		payload := Messages.InterAgentSyncMessagePayload{
+			ReceiverID: 1,
+			Content:    "Stop !",
+		}
+		payloadStr, _ := json.Marshal(payload)
+
 		agent.SendSyncMessage(Messages.Message{
 			Type:        Messages.InterAgentSyncMessage,
 			Sender:      fmt.Sprintf("%d", agent.ID),
 			ContentType: Messages.InterAgentSyncMessageContent,
-			Content:     "Stop !",
+			Content:     string(payloadStr),
 		})
 	} else {
 		agent.StopSynchronousCommunication()
@@ -110,12 +131,19 @@ func (b *BasicBehaviour2) HandleSyncCommunication(agent *Agent.Agent, msg Messag
 		return
 	}
 
+	answerPayload := Messages.InterAgentSyncMessagePayload{
+		ReceiverID: 2,
+		Content:    "Ping",
+	}
+
+	payloadStr, _ := json.Marshal(answerPayload)
+
 	if payload.Content == "Pong" || payload.Content == "Let's start !" {
 		agent.SendSyncMessage(Messages.Message{
 			Type:        Messages.InterAgentSyncMessage,
 			Sender:      fmt.Sprintf("%d", agent.ID),
 			ContentType: Messages.InterAgentSyncMessageContent,
-			Content:     "Ping",
+			Content:     string(payloadStr),
 		})
 	} else if msg.Content == "Stop !" {
 		agent.StopSynchronousCommunication()
