@@ -18,43 +18,52 @@ func (b *BasicBehaviour1) Perceive(agent *Agent.Agent, params ...interface{}) {}
 func (b *BasicBehaviour1) Decide(agent *Agent.Agent, params ...interface{})   {}
 func (b *BasicBehaviour1) Act(agent *Agent.Agent, params ...interface{}) {
 	if b.tick == 0 {
-		err := agent.StartSyncCommunication(1)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-
-		payload := Messages.InterAgentSyncMessagePayload{
+		payload := Messages.InterAgentAsyncMessagePayload{
 			ReceiverID: 1,
 			Content:    "Let's start !",
 		}
 		payloadStr, _ := json.Marshal(payload)
 
-		agent.SendSyncMessage(Messages.Message{
-			Type:        Messages.InterAgentSyncMessage,
-			Sender:      fmt.Sprintf("%d", agent.ID),
-			ContentType: Messages.InterAgentSyncMessageContent,
-			Content:     string(payloadStr),
-		})
+		agent.SendMail(Messages.Message{
+			Type:           Messages.InterAgentAsyncMessage,
+			Sender:         fmt.Sprintf("%d", agent.ID),
+			ContentType:    Messages.InterAgentAsyncMessageContent,
+			Content:        string(payloadStr),
+			ExpectResponse: false,
+		}, 1)
 	}
 	fmt.Printf("AGENT %d: Tick %d\n", agent.ID, b.tick)
 	b.tick++
 }
 func (b *BasicBehaviour1) HandleMailboxMessage(agent *Agent.Agent, msg Messages.Message) {
 	if b.tick < 10 {
+
+		payload := Messages.InterAgentAsyncMessagePayload{
+			ReceiverID: 1,
+			Content:    "Ping",
+		}
+		payloadStr, _ := json.Marshal(payload)
+
 		agent.SendMail(Messages.Message{
 			Type:           Messages.InterAgentAsyncMessage,
 			Sender:         fmt.Sprintf("%d", agent.ID),
 			ContentType:    Messages.InterAgentAsyncMessageContent,
-			Content:        "Pong",
+			Content:        string(payloadStr),
 			ExpectResponse: false,
 		}, 1)
-	} else {
+	} else if b.tick < 11 {
+
+		payload := Messages.InterAgentAsyncMessagePayload{
+			ReceiverID: 1,
+			Content:    "Stop !",
+		}
+		payloadStr, _ := json.Marshal(payload)
+
 		agent.SendMail(Messages.Message{
 			Type:           Messages.InterAgentAsyncMessage,
 			Sender:         fmt.Sprintf("%d", agent.ID),
 			ContentType:    Messages.InterAgentAsyncMessageContent,
-			Content:        "Stop !",
+			Content:        string(payloadStr),
 			ExpectResponse: false,
 		}, 1)
 	}
@@ -112,11 +121,17 @@ func (b *BasicBehaviour2) Act(agent *Agent.Agent, params ...interface{}) {
 }
 func (b *BasicBehaviour2) HandleMailboxMessage(agent *Agent.Agent, msg Messages.Message) {
 	if msg.Content != "Stop !" {
+		payload := Messages.InterAgentAsyncMessagePayload{
+			ReceiverID: 2,
+			Content:    "Pong",
+		}
+		payloadStr, _ := json.Marshal(payload)
+
 		agent.SendMail(Messages.Message{
 			Type:           Messages.InterAgentAsyncMessage,
 			Sender:         fmt.Sprintf("%d", agent.ID),
 			ContentType:    Messages.InterAgentAsyncMessageContent,
-			Content:        "Ping",
+			Content:        string(payloadStr),
 			ExpectResponse: false,
 		}, 2)
 	}
@@ -166,7 +181,7 @@ func main() {
 		agent1Ref.RegisterBehaviour("BasicBehaviour", &BasicBehaviour2{})
 		agent1Ref.SetBehaviour("BasicBehaviour")
 		fmt.Printf("Agent 1: %v\n", agent1)
-		time.Sleep(5 * time.Second)
+		time.Sleep(1 * time.Second)
 		mainContainer.Start()
 		for {
 			time.Sleep(1 * time.Second)
