@@ -12,12 +12,13 @@ import (
 )
 
 type Container struct {
-	id               string
-	localAdress      string
-	agents           map[string]*Agent.Agent
-	mainServerAdress string // null if the Container is the main Container
-	mainServerPort   string
-	networkService   *NetworkService.NetworkService
+	id                  string
+	localAdress         string
+	agents              map[string]*Agent.Agent
+	mainServerAdress    string // null if the Container is the main Container
+	mainServerPort      string
+	networkService      *NetworkService.NetworkService
+	resolveAgentLocally func(agentID string) (string, error)
 }
 
 type MainContainer struct {
@@ -52,11 +53,12 @@ func NewContainer(mainAddress, localAddress string) *Container {
 	}
 
 	newContainer := &Container{
-		id:               localAddress,
-		localAdress:      localAddress,
-		agents:           make(map[string]*Agent.Agent),
-		mainServerAdress: mainAddress,
-		networkService:   networkService,
+		id:                  localAddress,
+		localAdress:         localAddress,
+		agents:              make(map[string]*Agent.Agent),
+		mainServerAdress:    mainAddress,
+		networkService:      networkService,
+		resolveAgentLocally: nil,
 	}
 	newContainer.networkService.SetContainerOps(newContainer)
 	go newContainer.networkService.Start()
@@ -78,6 +80,7 @@ func NewMainContainer(mainAdress string) *MainContainer {
 	}
 	container.networkService.SetContainerOps(&mainContainer)
 	mainContainer.yellowPage.RegisterContainer(mainAdress)
+	mainContainer.Container.resolveAgentLocally = mainContainer.ResolveAgentAddress
 	return &mainContainer
 }
 
@@ -153,28 +156,33 @@ func (MainContainer *MainContainer) ResolveAgentAddress(agentID string) (string,
 }
 
 func (Container *Container) ResolveAgentAddress(agentID string) (string, error) {
-	// send the message to the main Container
-	// Prepare the message
-	payload := Messages.GetAgentAdressPayload{AgentID: agentID}
-	payloadStr, _ := json.Marshal(payload)
-	message := Messages.Message{
-		Type:           Messages.GetAgentAdress,
-		Sender:         Container.localAdress,
-		ContentType:    Messages.GetAgentAdressContent,
-		Content:        string(payloadStr),
-		ExpectResponse: true,
+	if Container.mainServerAdress == "" {
+		return Container.resolveAgentLocally(agentID)
+	} else {
+		// send the message to the main Container
+		// Prepare the message
+		payload := Messages.GetAgentAdressPayload{AgentID: agentID}
+		payloadStr, _ := json.Marshal(payload)
+		message := Messages.Message{
+			Type:           Messages.GetAgentAdress,
+			Sender:         Container.localAdress,
+			ContentType:    Messages.GetAgentAdressContent,
+			Content:        string(payloadStr),
+			ExpectResponse: true,
+		}
+		// Send the message and wait for a response
+		response, err := Container.networkService.SendMessage(message, Container.mainServerAdress)
+		if err != nil {
+			log.Fatalf("Failed to resolve agent address: %v", err)
+		}
+		// Parse the response
+		var answerPayload Messages.GetAgentAdressAnswerPayload
+		if err := json.Unmarshal([]byte(response.Content), &answerPayload); err != nil {
+			log.Fatalf("Failed to parse resolve agent address response: %v", err)
+		}
+		return answerPayload.Adress, nil
 	}
-	// Send the message and wait for a response
-	response, err := Container.networkService.SendMessage(message, Container.mainServerAdress)
-	if err != nil {
-		log.Fatalf("Failed to resolve agent address: %v", err)
-	}
-	// Parse the response
-	var answerPayload Messages.GetAgentAdressAnswerPayload
-	if err := json.Unmarshal([]byte(response.Content), &answerPayload); err != nil {
-		log.Fatalf("Failed to parse resolve agent address response: %v", err)
-	}
-	return answerPayload.Adress, nil
+
 }
 
 func (Container *Container) sendMessageToAnotherAgent(message Messages.Message, receiverId int, agentID int) {
@@ -195,18 +203,6 @@ func (Container *Container) sendMessageToAnotherAgent(message Messages.Message, 
 		receiverAdress, err := Container.ResolveAgentAddress(receiverIdStr)
 		if err != nil {
 			log.Fatalf("Failed to resolve agent address: %v", err)
-		}
-
-		// send the message to the main Container
-		// Prepare the message
-		payload := Messages.InterAgentAsyncMessagePayload{ReceiverID: receiverId, Content: message.Content}
-		payloadStr, _ := json.Marshal(payload) // handle error properly
-		message := Messages.Message{
-			Type:           Messages.InterAgentAsyncMessage,
-			Sender:         strconv.Itoa(agentID),
-			ContentType:    Messages.InterAgentAsyncMessageContent,
-			Content:        string(payloadStr),
-			ExpectResponse: false,
 		}
 		// Send the message
 		_, err = Container.networkService.SendMessage(message, receiverAdress)
